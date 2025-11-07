@@ -10,12 +10,12 @@
 constexpr int L = 25;  // Size of the lattice
 constexpr int N_CHEMICALS = 10;  // Number of different chemicals (excluding empty=0)
 constexpr int MOLECULES_PER_SITE = 100;  // Total molecules per site
-constexpr int N_STEPS = 1000;  // Number of timesteps
+constexpr int N_STEPS = 10000;  // Number of timesteps
 constexpr int MAX_RULES = 1000;  // Maximum number of rules
-constexpr int SUPPLY_RATE = 1;  // Molecules supplied per timestep at top
-constexpr int D = 1;  // Diffusion coefficient: number of molecules to move per site per step
+constexpr int SUPPLY_RATE = 10;  // Molecules supplied per timestep at top
+constexpr int D = 25;  // Diffusion coefficient: number of molecules to move per site per step
 
-constexpr int RECORDING_INTERVAL = 100; // Interval for recording lattice state
+constexpr int RECORDING_INTERVAL = 1000; // Interval for recording lattice state
 
 // Rule structure: A+B+C -> D+E+F (values 0-N_CHEMICALS, 0=empty)
 struct Rule {
@@ -88,72 +88,62 @@ __global__ void apply_reactions(int *lattice, Rule *rules, int n_rules,
             counts[c] = lattice[id * (N_CHEMICALS + 1) + c];
         }
         
-        // Compute total weight for sampling
+        // Find eligible rules and compute weights
+        long long rule_weights[MAX_RULES];
+        int eligible_rules[MAX_RULES];
+        int num_eligible = 0;
         long long total_weight = 0;
-        for (int c = 0; c <= N_CHEMICALS; ++c) {
-            total_weight += (long long)counts[c] * volatility[c] * 1000;
-        }
         
-        if (total_weight == 0) {
-            states[id] = localState;
-            return;  // No molecules to react
-        }
-        
-        // Sample 3 reactants based on weights
-        int reactants[3];
-        for (int i = 0; i < 3; ++i) {
-            long long rand_val = (long long)(curand_uniform(&localState) * total_weight);
-            long long cumsum = 0;
-            for (int c = 0; c <= N_CHEMICALS; ++c) {
-                cumsum += (long long)counts[c] * volatility[c] * 1000;
-                if (cumsum > rand_val) {
-                    reactants[i] = c;
-                    break;
-                }
-            }
-        }
-        
-        // Sort reactants for matching
-        for (int i = 0; i < 2; ++i) {
-            for (int j = i + 1; j < 3; ++j) {
-                if (reactants[i] > reactants[j]) {
-                    int temp = reactants[i];
-                    reactants[i] = reactants[j];
-                    reactants[j] = temp;
-                }
-            }
-        }
-        
-        // Find matching rule
-        int matching_rule = -1;
         for (int r = 0; r < n_rules; ++r) {
-            if (rules[r].active &&
-                rules[r].reactants[0] == reactants[0] &&
-                rules[r].reactants[1] == reactants[1] &&
-                rules[r].reactants[2] == reactants[2]) {
-                matching_rule = r;
-                break;
-            }
-        }
-        
-        if (matching_rule != -1) {
-            // Check if we have enough reactants
-            bool can_react = true;
+            if (!rules[r].active) continue;
+            
+            // Check if we have enough reactants, accounting for duplicates
+            int req[N_CHEMICALS + 1] = {0};
             for (int i = 0; i < 3; ++i) {
-                if (counts[reactants[i]] == 0) {
+                req[rules[r].reactants[i]]++;
+            }
+            bool can_react = true;
+            for (int c = 0; c <= N_CHEMICALS; ++c) {
+                if (req[c] > counts[c]) {
                     can_react = false;
                     break;
                 }
             }
             
             if (can_react) {
-                // Consume reactants
+                // Compute weight: product of (count[c] * volatility[c]) for each reactant, considering multiplicity
+                long long weight = 1;
                 for (int i = 0; i < 3; ++i) {
-                    counts[reactants[i]]--;
+                    int c = rules[r].reactants[i];
+                    weight *= (long long)(counts[c] * volatility[c] * 1000);
                 }
-                // Produce products
+                rule_weights[num_eligible] = weight;
+                eligible_rules[num_eligible] = r;
+                total_weight += weight;
+                num_eligible++;
+            }
+        }
+        
+        if (num_eligible > 0 && total_weight > 0) {
+            // Select a rule proportionally to its weight
+            long long rand_val = (long long)(curand_uniform(&localState) * total_weight);
+            long long cumsum = 0;
+            int selected_rule = -1;
+            for (int i = 0; i < num_eligible; ++i) {
+                cumsum += rule_weights[i];
+                if (cumsum > rand_val) {
+                    selected_rule = eligible_rules[i];
+                    break;
+                }
+            }
+            
+            if (selected_rule != -1) {
+                // Apply the selected rule
                 for (int i = 0; i < 3; ++i) {
-                    counts[rules[matching_rule].products[i]]++;
+                    counts[rules[selected_rule].reactants[i]]--;
+                }
+                for (int i = 0; i < 3; ++i) {
+                    counts[rules[selected_rule].products[i]]++;
                 }
             }
         }
@@ -320,10 +310,16 @@ void save_rules(const std::vector<Rule> &rules, int n_rules, const std::string &
 
 
 
-__global__ void diffuse(int *lattice, curandState *states) {
+__global__ void diffuse(int *lattice, curandState *states, int phase) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
     int id = idy * L + idx;
+
+    // Cyclic 6-phase pattern: phase = (idx + idy * 2) % 6
+    int computed_phase = (idx + idy * 2) % 6;
+    if (computed_phase != phase) {
+        return;
+    }
 
     if (idx < L && idy < L) {
         curandState localState = states[id];
@@ -421,12 +417,14 @@ int main() {
             std::cerr << "CUDA Error after apply_reactions at step " << t << ": " << cudaGetErrorString(error) << std::endl;
         }
 
-        // Diffuse molecules
-        diffuse<<<gridSize, blockSize>>>(d_lattice, d_states);
-        cudaDeviceSynchronize();
-        error = cudaGetLastError();
-        if (error != cudaSuccess) {
-            std::cerr << "CUDA Error after diffuse at step " << t << ": " << cudaGetErrorString(error) << std::endl;
+        // Diffuse molecules in 6 phases
+        for (int phase = 0; phase < 6; ++phase) {
+            diffuse<<<gridSize, blockSize>>>(d_lattice, d_states, phase);
+            cudaDeviceSynchronize();
+            error = cudaGetLastError();
+            if (error != cudaSuccess) {
+                std::cerr << "CUDA Error after diffuse phase " << phase << " at step " << t << ": " << cudaGetErrorString(error) << std::endl;
+            }
         }
 
         // Count global chemicals
