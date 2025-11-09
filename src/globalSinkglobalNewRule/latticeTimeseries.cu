@@ -342,10 +342,10 @@ __global__ void diffuse(int *lattice, curandState *states, int phase) {
             int c_a = curand(&localState) % stride;  // Chemical from site
             int c_b = curand(&localState) % stride;  // Chemical from neighbor
             if (lattice[id * stride + c_a] > 0 && lattice[nid * stride + c_b] > 0) {
-                atomicAdd(&lattice[id * stride + c_a], -1);
-                atomicAdd(&lattice[nid * stride + c_a], 1);
-                atomicAdd(&lattice[nid * stride + c_b], -1);
-                atomicAdd(&lattice[id * stride + c_b], 1);
+                lattice[id * stride + c_a] -= 1;
+                lattice[nid * stride + c_a] += 1;
+                lattice[nid * stride + c_b] -= 1;
+                lattice[id * stride + c_b] += 1;
             }
         }
         
