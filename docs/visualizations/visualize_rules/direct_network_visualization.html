@@ -74,6 +74,25 @@
         .link.reactant-to-product {
             stroke: #27ae60;
             marker-end: url(#arrowhead-green);
+            transition: stroke 0.3s ease;
+        }
+        
+        .link.highlighted-outgoing {
+            stroke: #e67e22 !important;
+            marker-end: url(#arrowhead-orange) !important;
+            stroke-width: 4px !important;
+        }
+        
+        .link.highlighted-incoming {
+            stroke: #3498db !important;
+            marker-end: url(#arrowhead-blue) !important;
+            stroke-width: 4px !important;
+        }
+        
+        .link.dimmed {
+            stroke: #bdc3c7 !important;
+            marker-end: url(#arrowhead-gray) !important;
+            opacity: 0.3;
         }
         
         .chemical-node {
@@ -82,6 +101,15 @@
         
         .chemical-node.empty {
             fill: #1f77b4;
+            opacity: 0.3;
+        }
+        
+        .chemical-node.highlighted {
+            stroke: #f39c12;
+            stroke-width: 4px;
+        }
+        
+        .chemical-node.dimmed {
             opacity: 0.3;
         }
         
@@ -265,6 +293,45 @@
             .append("path")
             .attr("d", "M0,-5L10,0L0,5")
             .attr("fill", "#27ae60");
+            
+        // Orange arrowhead for outgoing highlights
+        defs.append("marker")
+            .attr("id", "arrowhead-orange")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 20)
+            .attr("refY", 0)
+            .attr("markerWidth", 8)
+            .attr("markerHeight", 8)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#e67e22");
+            
+        // Blue arrowhead for incoming highlights
+        defs.append("marker")
+            .attr("id", "arrowhead-blue")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 20)
+            .attr("refY", 0)
+            .attr("markerWidth", 8)
+            .attr("markerHeight", 8)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#3498db");
+            
+        // Gray arrowhead for dimmed links
+        defs.append("marker")
+            .attr("id", "arrowhead-gray")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 20)
+            .attr("refY", 0)
+            .attr("markerWidth", 8)
+            .attr("markerHeight", 8)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#bdc3c7");
 
         const g = svg.append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
@@ -507,6 +574,50 @@
                 tooltip.style("opacity", 0);
             })
             .on("click", function(event, d) {
+                // Toggle selection
+                const isCurrentlySelected = d3.select(this).classed("highlighted");
+                
+                // Clear all highlights
+                svg.selectAll(".node").classed("highlighted", false);
+                svg.selectAll(".link")
+                    .classed("highlighted-outgoing", false)
+                    .classed("highlighted-incoming", false)
+                    .classed("dimmed", false)
+                    .attr("marker-end", "url(#arrowhead-green)");
+                
+                if (!isCurrentlySelected) {
+                    // Highlight the selected node
+                    d3.select(this).classed("highlighted", true);
+                    
+                    // Get connected links
+                    const connectedLinks = links.filter(link => 
+                        link.source.id === d.id || link.target.id === d.id
+                    );
+                    
+                    // Highlight and dim links based on direction
+                    svg.selectAll(".link").each(function(linkData) {
+                        const isConnected = connectedLinks.includes(linkData);
+                        if (isConnected) {
+                            if (linkData.source.id === d.id) {
+                                // Outgoing link
+                                d3.select(this)
+                                    .classed("highlighted-outgoing", true)
+                                    .attr("marker-end", "url(#arrowhead-orange)");
+                            } else {
+                                // Incoming link
+                                d3.select(this)
+                                    .classed("highlighted-incoming", true)
+                                    .attr("marker-end", "url(#arrowhead-blue)");
+                            }
+                        } else {
+                            // Dim unconnected links
+                            d3.select(this)
+                                .classed("dimmed", true)
+                                .attr("marker-end", "url(#arrowhead-gray)");
+                        }
+                    });
+                }
+                
                 showChemicalDetails(d.chemical);
                 // Prevent drag from starting on click
                 event.stopPropagation();
