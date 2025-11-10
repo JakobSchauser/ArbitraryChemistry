@@ -369,10 +369,12 @@ __global__ void diffuse(int *lattice, curandState *states, int phase) {
             lattice[nid * stride + c_a] += 1;
             lattice[nid * stride + c_b] -= 1;
             lattice[id * stride + c_b] += 1;
+            }
         }
+        
+        states[id] = localState;
     }
-    
-    states[id] = localState;
+
 }
 
 int main() {
