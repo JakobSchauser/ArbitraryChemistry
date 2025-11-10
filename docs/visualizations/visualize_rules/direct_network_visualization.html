@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chemical Network Visualization (Direct)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .file-input {
+            margin: 10px;
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        
+        .info-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .node {
+            cursor: pointer;
+        }
+        
+        .node circle {
+            stroke: #333;
+            stroke-width: 2px;
+        }
+        
+        .node text {
+            font-size: 12px;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+            font-weight: bold;
+        }
+        
+        .link {
+            stroke-width: 2px;
+            fill: none;
+        }
+        
+        .link.reactant-to-product {
+            stroke: #27ae60;
+            marker-end: url(#arrowhead-green);
+        }
+        
+        .chemical-node {
+            fill: #1f77b4;
+        }
+        
+        .chemical-node.empty {
+            fill: #1f77b4;
+            opacity: 0.3;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .legend {
+            position: absolute;
+            top: 100px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .legend-circle {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 2px solid #333;
+        }
+        
+        .detail-panel {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+        }
+        
+        .detail-panel h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .detail-panel .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .detail-panel .close-btn:hover {
+            color: #333;
+        }
+        
+        .reaction-section {
+            margin-bottom: 20px;
+        }
+        
+        .reaction-section h4 {
+            margin: 0 0 10px 0;
+            color: #555;
+        }
+        
+        .reaction-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .reaction-list li {
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #dee2e6;
+            font-family: monospace;
+        }
+        
+        .reaction-list li.consumed {
+            border-left-color: #e74c3c;
+            background: #fdf2f2;
+        }
+        
+        .reaction-list li.produced {
+            border-left-color: #27ae60;
+            background: #f2fdf5;
+        }
+        
+        .reaction-meta {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Chemical Network Visualization (Direct Connections)</h1>
+        
+        <div class="info-panel">
+            <strong>Instructions:</strong> Upload a rules.tsv file generated by the simulation. 
+            This visualization shows direct connections between chemicals, with green arrows indicating 
+            transformation pathways (from reactants to products).
+        </div>
+        
+        <div class="controls">
+            <div class="file-input">
+                <label for="fileInput">Choose rules.tsv file:</label>
+                <input type="file" id="fileInput" accept=".tsv,.txt,.csv">
+            </div>
+        </div>
+        
+        <div id="visualization"></div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-circle" style="background-color: #1f77b4;"></div>
+                <span>Chemical</span>
+            </div>
+            <div class="legend-item">
+                <div style="width: 20px; height: 2px; background-color: #27ae60; margin-right: 8px;"></div>
+                <span>Transformation</span>
+            </div>
+        </div>
+        
+        <div class="tooltip" id="tooltip"></div>
+        
+        <div class="detail-panel" id="detailPanel">
+            <button class="close-btn" onclick="closeDetailPanel()">&times;</button>
+            <div id="detailContent"></div>
+        </div>
+    </div>
+
+    <script>
+        // Set up the visualization
+        const margin = {top: 20, right: 20, bottom: 20, left: 20};
+        const width = 1000 - margin.left - margin.right;
+        const height = 700 - margin.top - margin.bottom;
+
+        const svg = d3.select("#visualization")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+
+        // Define arrowhead markers
+        const defs = svg.append("defs");
+        
+        // Green arrowhead for transformations
+        defs.append("marker")
+            .attr("id", "arrowhead-green")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 20)
+            .attr("refY", 0)
+            .attr("markerWidth", 8)
+            .attr("markerHeight", 8)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#27ae60");
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const tooltip = d3.select("#tooltip");
+        const detailPanel = d3.select("#detailPanel");
+        let allRules = []; // Store all rules for detail panel
+
+        // Close detail panel function
+        function closeDetailPanel() {
+            detailPanel.style("display", "none");
+        }
+
+        // Show chemical details function
+        function showChemicalDetails(chemical) {
+            const consumed = [];
+            const produced = [];
+            
+            allRules.forEach((rule, index) => {
+                const reactantsStr = rule.reactants.join(' + ');
+                const productsStr = rule.products.join(' + ');
+                const reactionStr = `${reactantsStr} → ${productsStr}`;
+                
+                if (rule.reactants.includes(chemical)) {
+                    consumed.push({
+                        reaction: reactionStr,
+                        step: rule.step,
+                        index: index
+                    });
+                }
+                
+                if (rule.products.includes(chemical)) {
+                    produced.push({
+                        reaction: reactionStr,
+                        step: rule.step,
+                        index: index
+                    });
+                }
+            });
+            
+            let content = `<h3>Chemical ${chemical}${chemical === 0 ? ' (Empty)' : ''}</h3>`;
+            
+            content += `<div class="reaction-section">
+                <h4>🔴 Consumed in reactions (${consumed.length}):</h4>
+                <ul class="reaction-list">`;
+            
+            if (consumed.length === 0) {
+                content += `<li>No reactions consume this chemical</li>`;
+            } else {
+                consumed.forEach(item => {
+                    content += `<li class="consumed">
+                        ${item.reaction}
+                        <div class="reaction-meta">Added at step: ${item.step}</div>
+                    </li>`;
+                });
+            }
+            
+            content += `</ul></div>`;
+            
+            content += `<div class="reaction-section">
+                <h4>🟢 Produced in reactions (${produced.length}):</h4>
+                <ul class="reaction-list">`;
+            
+            if (produced.length === 0) {
+                content += `<li>No reactions produce this chemical</li>`;
+            } else {
+                produced.forEach(item => {
+                    content += `<li class="produced">
+                        ${item.reaction}
+                        <div class="reaction-meta">Added at step: ${item.step}</div>
+                    </li>`;
+                });
+            }
+            
+            content += `</ul></div>`;
+            
+            d3.select("#detailContent").html(content);
+            detailPanel.style("display", "block");
+        }
+
+        // File input handler
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    parseAndVisualize(content);
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        function parseAndVisualize(tsvContent) {
+            // Parse TSV content
+            const lines = tsvContent.trim().split('\n');
+            const header = lines[0].split('\t');
+            const rules = lines.slice(1).map(line => {
+                const parts = line.split('\t');
+                return {
+                    step: parseInt(parts[0]),
+                    reactants: [parseInt(parts[1]), parseInt(parts[2]), parseInt(parts[3])],
+                    products: [parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6])]
+                };
+            });
+
+            // Store rules globally for detail panel
+            allRules = rules;
+
+            // Extract unique chemicals
+            const chemicals = new Set();
+            rules.forEach(rule => {
+                rule.reactants.forEach(r => chemicals.add(r));
+                rule.products.forEach(p => chemicals.add(p));
+            });
+
+            // Create nodes and links
+            const nodes = [];
+            const links = [];
+
+            // Add chemical nodes only
+            Array.from(chemicals).forEach(chemical => {
+                nodes.push({
+                    id: `chemical_${chemical}`,
+                    type: 'chemical',
+                    chemical: chemical,
+                    label: chemical === 0 ? 'Empty' : `C${chemical}`
+                });
+            });
+
+            // Create direct links from reactants to products
+            const linkMap = new Map(); // To aggregate multiple same-direction links
+
+            rules.forEach(rule => {
+                // Create links from each reactant to each product
+                rule.reactants.forEach(reactant => {
+                    rule.products.forEach(product => {
+                        if (reactant !== product) { // Avoid self-loops
+                            const linkKey = `${reactant}_to_${product}`;
+                            if (!linkMap.has(linkKey)) {
+                                linkMap.set(linkKey, {
+                                    source: `chemical_${reactant}`,
+                                    target: `chemical_${product}`,
+                                    type: 'reactant-to-product',
+                                    count: 0,
+                                    rules: [],
+                                    sourceChemical: reactant,
+                                    targetChemical: product
+                                });
+                            }
+                            linkMap.get(linkKey).count++;
+                            linkMap.get(linkKey).rules.push(rule);
+                        }
+                    });
+                });
+            });
+
+            // Convert map to array and add offset information for bidirectional links
+            const allLinks = Array.from(linkMap.values());
+            
+            // Identify bidirectional pairs and add offset
+            allLinks.forEach(link => {
+                const reverseKey = `${link.targetChemical}_to_${link.sourceChemical}`;
+                const reverseLink = allLinks.find(l => 
+                    l.sourceChemical === link.targetChemical && l.targetChemical === link.sourceChemical
+                );
+                
+                if (reverseLink) {
+                    // This is a bidirectional pair - add offset
+                    link.offset = 8; // Offset in pixels
+                    reverseLink.offset = -8;
+                } else {
+                    link.offset = 0;
+                }
+            });
+
+            links.push(...allLinks);
+
+            visualizeNetwork(nodes, links);
+        }
+
+        function visualizeNetwork(nodes, links) {
+            // Clear previous visualization
+            g.selectAll("*").remove();
+
+            // Create force simulation
+            const simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id).distance(150))
+                .force("charge", d3.forceManyBody().strength(-800))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius(30));
+
+            // Create links with curved paths for bidirectional arrows
+            const link = g.append("g")
+                .attr("class", "links")
+                .selectAll("path")
+                .data(links)
+                .enter().append("path")
+                .attr("class", d => `link ${d.type}`)
+                .attr("stroke-width", d => Math.min(2 + d.count * 0.5, 8))
+                .attr("fill", "none");
+
+            // Create nodes
+            const node = g.append("g")
+                .attr("class", "nodes")
+                .selectAll(".node")
+                .data(nodes)
+                .enter().append("g")
+                .attr("class", "node")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Add shapes for nodes (only chemicals)
+            node.append("circle")
+                .attr("r", 20)
+                .attr("class", d => d.chemical === 0 ? "chemical-node empty" : "chemical-node");
+
+            // Add labels
+            node.append("text")
+                .text(d => d.label)
+                .style("fill", d => {
+                    if (d.chemical === 0) {
+                        return "rgba(255, 255, 255, 0.7)"; // Semi-transparent white for empty
+                    }
+                    return "white";
+                });
+
+            // Add tooltips and click handlers
+            node.on("mouseover", function(event, d) {
+                const tooltipText = `Chemical ${d.chemical}${d.chemical === 0 ? ' (Empty)' : ''}<br>Click for details`;
+                
+                tooltip.html(tooltipText)
+                    .style("opacity", 1)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+            })
+            .on("click", function(event, d) {
+                showChemicalDetails(d.chemical);
+                // Prevent drag from starting on click
+                event.stopPropagation();
+            });
+
+            // Add link tooltips
+            link.on("mouseover", function(event, d) {
+                const rulesText = d.rules.map(rule => {
+                    const reactantsStr = rule.reactants.join(' + ');
+                    const productsStr = rule.products.join(' + ');
+                    return `${reactantsStr} → ${productsStr}`;
+                }).join('<br>');
+                
+                tooltip.html(`${d.count} transformation(s):<br>${rulesText}`)
+                    .style("opacity", 1)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+            });
+
+            // Function to create curved path with offset
+            function createPath(d) {
+                const dx = d.target.x - d.source.x;
+                const dy = d.target.y - d.source.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance === 0) return "M0,0L0,0";
+                
+                // Calculate offset perpendicular to the line
+                const offsetX = (-dy / distance) * d.offset;
+                const offsetY = (dx / distance) * d.offset;
+                
+                // Calculate control point for curve
+                const midX = (d.source.x + d.target.x) / 2 + offsetX;
+                const midY = (d.source.y + d.target.y) / 2 + offsetY;
+                
+                // Create quadratic curve
+                return `M${d.source.x},${d.source.y}Q${midX},${midY} ${d.target.x},${d.target.y}`;
+            }
+
+            // Update positions on tick
+            simulation.on("tick", () => {
+                link.attr("d", createPath);
+
+                node
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            // Update info
+            const chemicalCount = nodes.length;
+            const transformationCount = links.length;
+            
+            d3.select(".info-panel").html(`
+                <strong>Network Statistics:</strong> 
+                ${chemicalCount} chemicals, ${transformationCount} direct transformations
+            `);
+        }
+    </script>
+</body>
+</html>
