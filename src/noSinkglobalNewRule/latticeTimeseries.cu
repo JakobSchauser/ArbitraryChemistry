@@ -281,15 +281,25 @@ __global__ void init_curand(curandState *states, unsigned long seed) {
 
 void save_lattice(const std::vector<int> &lattice, const std::string &filename) {
     std::ofstream file(filename);
+    
+    // Write header with metadata
+    file << "# Lattice size: " << L << "x" << L << std::endl;
+    file << "# Molecules per site: " << MOLECULES_PER_SITE << std::endl;
+    file << "# Chemical range: 0-" << N_CHEMICALS << " (0=empty)" << std::endl;
+    file << "# Format: x,y,chemical,count" << std::endl;
+    file << "x,y,chemical,count" << std::endl;
+    
+    // Write data in CSV format, only include non-zero counts for efficiency
     for (int i = 0; i < L; ++i) {
         for (int j = 0; j < L; ++j) {
             int site_idx = (i * L + j) * (N_CHEMICALS + 1);
             for (int c = 0; c <= N_CHEMICALS; ++c) {
-                file << lattice[site_idx + c] << " ";
+                int count = lattice[site_idx + c];
+                if (count > 0) {  // Only save non-zero counts
+                    file << j << "," << i << "," << c << "," << count << std::endl;
+                }
             }
-            file << "\t";
         }
-        file << "\n";
     }
     file.close();
 }

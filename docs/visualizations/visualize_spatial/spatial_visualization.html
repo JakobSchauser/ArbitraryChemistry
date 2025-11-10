@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spatial Chemical Distribution Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: #667eea;
+            color: white;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.8em;
+            font-weight: 300;
+        }
+
+        .header p {
+            margin: 3px 0 0 0;
+            opacity: 0.9;
+            font-size: 1em;
+        }
+
+        .controls {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+
+        .folder-input {
+            padding: 8px 12px;
+            border: 2px solid #ced4da;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            background: #f8f9fa;
+            cursor: pointer;
+        }
+
+        .folder-input:hover {
+            border-color: #667eea;
+            background: #fff;
+        }
+
+        .load-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+
+        .load-btn:hover {
+            background: #5a67d8;
+        }
+
+        .load-btn:disabled {
+            background: #adb5bd;
+            cursor: not-allowed;
+        }
+
+        .chemical-selectors {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .chemical-select {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .chemical-select select {
+            padding: 8px 12px;
+            border: 2px solid #ced4da;
+            border-radius: 5px;
+            font-size: 14px;
+            min-width: 120px;
+            transition: border-color 0.3s;
+        }
+
+        .red-channel { border-color: #dc3545; }
+        .green-channel { border-color: #28a745; }
+        .blue-channel { border-color: #007bff; }
+
+        .chemical-select select:focus {
+            outline: none;
+        }
+
+        .red-channel:focus { border-color: #dc3545; }
+        .green-channel:focus { border-color: #28a745; }
+        .blue-channel:focus { border-color: #007bff; }
+
+        .color-label {
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .red-label { color: #dc3545; }
+        .green-label { color: #28a745; }
+        .blue-label { color: #007bff; }
+
+        .time-control {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .time-slider {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+        }
+
+        .time-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .time-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+        }
+
+        .time-info {
+            text-align: center;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .visualization-area {
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            min-height: 600px;
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .canvas-container h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 1.2em;
+        }
+
+        .lattice-canvas {
+            border: 2px solid #dee2e6;
+            border-radius: 5px;
+            background: white;
+            max-width: 500px;
+            max-height: 500px;
+        }
+
+        .info-panel {
+            width: 300px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+        }
+
+        .info-panel h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .status {
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .status.ready {
+            background: #d1edff;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .chemical-info {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .chemical-stats {
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+
+        .chemical-stats.red { border-left-color: #dc3545; }
+        .chemical-stats.green { border-left-color: #28a745; }
+        .chemical-stats.blue { border-left-color: #007bff; }
+
+        .chemical-stats h4 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+
+        .legend h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #495057;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .tooltip {
+            position: absolute;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            pointer-events: none;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Spatial Chemical Distribution</h1>
+            <p>Interactive visualization of chemical concentrations over space and time</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Select Data Folder:</label>
+                <input type="file" class="folder-input" id="folderInput" 
+                       webkitdirectory multiple onchange="handleFolderSelection(event)">
+                <button class="load-btn" onclick="loadData()">Load Data</button>
+            </div>
+
+            <div class="chemical-selectors">
+                <div class="chemical-select">
+                    <div class="color-label red-label">Red Chemical</div>
+                    <select id="redChemical" class="red-channel" onchange="updateVisualization()">
+                        <option value="">None</option>
+                    </select>
+                </div>
+                <div class="chemical-select">
+                    <div class="color-label green-label">Green Chemical</div>
+                    <select id="greenChemical" class="green-channel" onchange="updateVisualization()">
+                        <option value="">None</option>
+                    </select>
+                </div>
+                <div class="chemical-select">
+                    <div class="color-label blue-label">Blue Chemical</div>
+                    <select id="blueChemical" class="blue-channel" onchange="updateVisualization()">
+                        <option value="">None</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="time-control">
+                <label>Time Step:</label>
+                <input type="range" class="time-slider" id="timeSlider" 
+                       min="0" max="0" value="0" oninput="updateTimeStep()">
+                <div class="time-info" id="timeInfo">Step 0</div>
+            </div>
+        </div>
+
+        <div class="visualization-area">
+            <div class="canvas-container">
+                <h3>Chemical Distribution</h3>
+                <canvas class="lattice-canvas" id="latticeCanvas" width="500" height="500"></canvas>
+            </div>
+
+            <div class="info-panel">
+                <h3>Information</h3>
+                <div class="status loading" id="statusDiv">
+                    Load data to begin visualization
+                </div>
+
+                <div class="chemical-info hidden" id="chemicalInfo">
+                    <div class="chemical-stats red">
+                        <h4>Red Chemical</h4>
+                        <div class="stat-value" id="redTotal">0</div>
+                        <div class="stat-label">Total molecules</div>
+                    </div>
+                    <div class="chemical-stats green">
+                        <h4>Green Chemical</h4>
+                        <div class="stat-value" id="greenTotal">0</div>
+                        <div class="stat-label">Total molecules</div>
+                    </div>
+                    <div class="chemical-stats blue">
+                        <h4>Blue Chemical</h4>
+                        <div class="stat-value" id="blueTotal">0</div>
+                        <div class="stat-label">Total molecules</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tooltip hidden" id="tooltip"></div>
+
+    <script>
+        let latticeData = {};
+        let timeSteps = [];
+        let availableChemicals = new Set();
+        let currentTimeStep = 0;
+        let latticeSize = 10;  // Will be updated when data is loaded
+        let selectedFiles = [];  // Store selected files from folder picker
+
+        const canvas = document.getElementById('latticeCanvas');
+        const ctx = canvas.getContext('2d');
+        const tooltip = document.getElementById('tooltip');
+
+        // Mouse interaction for tooltips
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseleave', hideTooltip);
+
+        function handleMouseMove(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            // Convert canvas coordinates to lattice coordinates
+            const cellSize = canvas.width / latticeSize;
+            const latticeX = Math.floor(x / cellSize);
+            const latticeY = Math.floor(y / cellSize);
+            
+            if (latticeX >= 0 && latticeX < latticeSize && latticeY >= 0 && latticeY < latticeSize) {
+                showTooltip(event, latticeX, latticeY);
+            } else {
+                hideTooltip();
+            }
+        }
+
+        function showTooltip(event, x, y) {
+            const redChem = document.getElementById('redChemical').value;
+            const greenChem = document.getElementById('greenChemical').value;
+            const blueChem = document.getElementById('blueChemical').value;
+            
+            const currentData = latticeData[currentTimeStep];
+            if (!currentData) return;
+            
+            let tooltipText = `Position: (${x}, ${y})<br>`;
+            
+            if (redChem) {
+                const redCount = getChemicalCount(currentData, x, y, parseInt(redChem));
+                tooltipText += `Red (${redChem}): ${redCount}<br>`;
+            }
+            
+            if (greenChem) {
+                const greenCount = getChemicalCount(currentData, x, y, parseInt(greenChem));
+                tooltipText += `Green (${greenChem}): ${greenCount}<br>`;
+            }
+            
+            if (blueChem) {
+                const blueCount = getChemicalCount(currentData, x, y, parseInt(blueChem));
+                tooltipText += `Blue (${blueChem}): ${blueCount}`;
+            }
+            
+            tooltip.innerHTML = tooltipText;
+            tooltip.style.left = (event.pageX + 10) + 'px';
+            tooltip.style.top = (event.pageY - 10) + 'px';
+            tooltip.classList.remove('hidden');
+        }
+
+        function hideTooltip() {
+            tooltip.classList.add('hidden');
+        }
+
+        function getChemicalCount(data, x, y, chemical) {
+            const key = `${x},${y},${chemical}`;
+            return data[key] || 0;
+        }
+
+        function handleFolderSelection(event) {
+            selectedFiles = Array.from(event.target.files);
+            console.log(`Selected ${selectedFiles.length} files`);
+        }
+
+        async function loadData() {
+            if (selectedFiles.length === 0) {
+                setStatus('error', 'Please select a folder containing lattice files first');
+                return;
+            }
+
+            setStatus('loading', 'Loading data...');
+            
+            try {
+                // Reset data
+                latticeData = {};
+                timeSteps = [];
+                availableChemicals = new Set();
+                
+                // Filter for lattice files
+                const latticeFiles = selectedFiles.filter(file => 
+                    file.name.startsWith('lattice_') && file.name.endsWith('.txt')
+                );
+                
+                if (latticeFiles.length === 0) {
+                    setStatus('error', 'No lattice files found in the selected folder');
+                    return;
+                }
+
+                // Load each file
+                for (const file of latticeFiles) {
+                    await loadLatticeFile(file);
+                }
+
+                // Sort time steps
+                timeSteps.sort((a, b) => a - b);
+                
+                // Update UI
+                populateChemicalSelectors();
+                setupTimeSlider();
+                setStatus('ready', `Loaded ${timeSteps.length} time steps`);
+                
+                // Show info panels
+                document.getElementById('chemicalInfo').classList.remove('hidden');
+                
+                updateVisualization();
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                setStatus('error', 'Error loading data: ' + error.message);
+            }
+        }
+
+        async function loadLatticeFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const text = e.target.result;
+                        const data = {};
+                        
+                        const lines = text.split('\n');
+                        let dataStarted = false;
+                        
+                        // Extract time step from filename
+                        const timeStepMatch = file.name.match(/lattice_(\d+)\.txt/);
+                        if (!timeStepMatch) {
+                            reject(new Error(`Invalid filename format: ${file.name}`));
+                            return;
+                        }
+                        const timeStep = parseInt(timeStepMatch[1]);
+                        
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (!trimmed || trimmed.startsWith('#')) {
+                                // Extract lattice size from header
+                                if (trimmed.startsWith('# Lattice size:')) {
+                                    const sizeMatch = trimmed.match(/(\d+)x(\d+)/);
+                                    if (sizeMatch) {
+                                        latticeSize = parseInt(sizeMatch[1]);
+                                    }
+                                }
+                                continue;
+                            }
+                            
+                            if (trimmed === 'x,y,chemical,count') {
+                                dataStarted = true;
+                                continue;
+                            }
+                            
+                            if (dataStarted) {
+                                const parts = trimmed.split(',');
+                                if (parts.length === 4) {
+                                    const x = parseInt(parts[0]);
+                                    const y = parseInt(parts[1]);
+                                    const chemical = parseInt(parts[2]);
+                                    const count = parseInt(parts[3]);
+                                    
+                                    if (!isNaN(x) && !isNaN(y) && !isNaN(chemical) && !isNaN(count)) {
+                                        const key = `${x},${y},${chemical}`;
+                                        data[key] = count;
+                                        availableChemicals.add(chemical);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        latticeData[timeStep] = data;
+                        timeSteps.push(timeStep);
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+                reader.readAsText(file);
+            });
+        }
+
+        function populateChemicalSelectors() {
+            const selectors = ['redChemical', 'greenChemical', 'blueChemical'];
+            const sortedChemicals = Array.from(availableChemicals).sort((a, b) => a - b);
+            
+            selectors.forEach(selectorId => {
+                const select = document.getElementById(selectorId);
+                select.innerHTML = '<option value="">None</option>';
+                
+                sortedChemicals.forEach(chemical => {
+                    const option = document.createElement('option');
+                    option.value = chemical;
+                    option.textContent = chemical === 0 ? 'Empty (0)' : `Chemical ${chemical}`;
+                    select.appendChild(option);
+                });
+            });
+            
+            // Set default selections if available
+            if (sortedChemicals.length > 1) {
+                document.getElementById('redChemical').value = sortedChemicals[1] || '';
+            }
+            if (sortedChemicals.length > 2) {
+                document.getElementById('greenChemical').value = sortedChemicals[2] || '';
+            }
+            if (sortedChemicals.length > 3) {
+                document.getElementById('blueChemical').value = sortedChemicals[3] || '';
+            }
+        }
+
+        function setupTimeSlider() {
+            const slider = document.getElementById('timeSlider');
+            slider.min = 0;
+            slider.max = timeSteps.length - 1;
+            slider.value = 0;
+            currentTimeStep = timeSteps[0];
+            updateTimeInfo();
+        }
+
+        function updateTimeStep() {
+            const slider = document.getElementById('timeSlider');
+            const index = parseInt(slider.value);
+            currentTimeStep = timeSteps[index];
+            updateTimeInfo();
+            updateVisualization();
+        }
+
+        function updateTimeInfo() {
+            document.getElementById('timeInfo').textContent = `Step ${currentTimeStep}`;
+        }
+
+        function updateVisualization() {
+            if (timeSteps.length === 0) return;
+            
+            const currentData = latticeData[currentTimeStep];
+            if (!currentData) return;
+            
+            drawLattice(currentData);
+            updateChemicalStats(currentData);
+        }
+
+        function drawLattice(data) {
+            const cellSize = canvas.width / latticeSize;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const redChem = document.getElementById('redChemical').value;
+            const greenChem = document.getElementById('greenChemical').value;
+            const blueChem = document.getElementById('blueChemical').value;
+            
+            if (!redChem && !greenChem && !blueChem) {
+                // Draw grid when no chemicals selected
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 0.5;
+                for (let i = 0; i <= latticeSize; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * cellSize, 0);
+                    ctx.lineTo(i * cellSize, canvas.height);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * cellSize);
+                    ctx.lineTo(canvas.width, i * cellSize);
+                    ctx.stroke();
+                }
+                return;
+            }
+            
+            // Find max values for normalization
+            let maxRed = 0, maxGreen = 0, maxBlue = 0;
+            
+            for (let y = 0; y < latticeSize; y++) {
+                for (let x = 0; x < latticeSize; x++) {
+                    if (redChem) {
+                        maxRed = Math.max(maxRed, getChemicalCount(data, x, y, parseInt(redChem)));
+                    }
+                    if (greenChem) {
+                        maxGreen = Math.max(maxGreen, getChemicalCount(data, x, y, parseInt(greenChem)));
+                    }
+                    if (blueChem) {
+                        maxBlue = Math.max(maxBlue, getChemicalCount(data, x, y, parseInt(blueChem)));
+                    }
+                }
+            }
+            
+            // Draw cells
+            for (let y = 0; y < latticeSize; y++) {
+                for (let x = 0; x < latticeSize; x++) {
+                    let r = 0, g = 0, b = 0;
+                    
+                    if (redChem && maxRed > 0) {
+                        r = Math.floor((getChemicalCount(data, x, y, parseInt(redChem)) / maxRed) * 255);
+                    }
+                    if (greenChem && maxGreen > 0) {
+                        g = Math.floor((getChemicalCount(data, x, y, parseInt(greenChem)) / maxGreen) * 255);
+                    }
+                    if (blueChem && maxBlue > 0) {
+                        b = Math.floor((getChemicalCount(data, x, y, parseInt(blueChem)) / maxBlue) * 255);
+                    }
+                    
+                    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+            
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= latticeSize; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * cellSize, 0);
+                ctx.lineTo(i * cellSize, canvas.height);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(0, i * cellSize);
+                ctx.lineTo(canvas.width, i * cellSize);
+                ctx.stroke();
+            }
+        }
+
+        function updateChemicalStats(data) {
+            const redChem = document.getElementById('redChemical').value;
+            const greenChem = document.getElementById('greenChemical').value;
+            const blueChem = document.getElementById('blueChemical').value;
+            
+            let redTotal = 0, greenTotal = 0, blueTotal = 0;
+            
+            for (let y = 0; y < latticeSize; y++) {
+                for (let x = 0; x < latticeSize; x++) {
+                    if (redChem) {
+                        redTotal += getChemicalCount(data, x, y, parseInt(redChem));
+                    }
+                    if (greenChem) {
+                        greenTotal += getChemicalCount(data, x, y, parseInt(greenChem));
+                    }
+                    if (blueChem) {
+                        blueTotal += getChemicalCount(data, x, y, parseInt(blueChem));
+                    }
+                }
+            }
+            
+            document.getElementById('redTotal').textContent = redTotal.toLocaleString();
+            document.getElementById('greenTotal').textContent = greenTotal.toLocaleString();
+            document.getElementById('blueTotal').textContent = blueTotal.toLocaleString();
+        }
+
+        function setStatus(type, message) {
+            const statusDiv = document.getElementById('statusDiv');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+        }
+
+        // No initialization needed - user selects folder via file picker
+    </script>
+</body>
+</html>
