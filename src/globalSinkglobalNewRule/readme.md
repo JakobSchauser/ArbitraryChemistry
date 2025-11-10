@@ -16,7 +16,7 @@ At each timestep, the following steps are performed in sequence:
 
 2. **Reactions** (parallel): For each site, identify all eligible rules where sufficient reactants are present. Compute a weight for each eligible rule as the product of `(concentration[c] * volatility[c])` for each reactant `c` (accounting for multiplicity). Select one rule proportionally to its weight and apply it once, consuming reactants and producing products.
 
-3. **Diffusion** (parallel): Perform molecule swaps between neighboring sites in a 6-phase cyclic pattern to ensure no race conditions. In other words, the lattice is labelled into sites like `a,b,c,d,e,f`, in the following pattern:
+3. **Diffusion** (parallel): Perform molecule swaps between neighboring sites in a 6-phase cyclic pattern to ensure no race conditions. The lattice is divided into sites with phases labeled `a,b,c,d,e,f`, in the following pattern:
     ```
     a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2
     c3 d3 e3 f3 a3 b3 c4 d4 e4 f4 a4 b4
@@ -32,7 +32,15 @@ At each timestep, the following steps are performed in sequence:
     a6: e4, f6, b6
     ```
     Which ensures no overlap. We first parallely swap for all `A`s, then all `b`s, etc
-    Each site attempts `D` swaps per phase, exchanging molecules if both sites have the required chemicals.
+    During each phase, only sites of that specific phase are active and can perform swaps. Each active site performs `D` molecule swaps with **each** of its valid neighbors (up, down, left, right). For each swap:
+    - A molecule type is randomly selected from the current site using weighted sampling (probability proportional to concentration)
+    - A molecule type is randomly selected from the neighbor site using weighted sampling
+    - The two molecules are exchanged between the sites
+    
+    This results in different total swap counts depending on position:
+    - Interior sites (4 neighbors): 4×D total swaps per diffusion step
+    - Edge sites (3 neighbors): 3×D total swaps per diffusion step  
+    - Corner sites (2 neighbors): 2×D total swaps per diffusion step
 
 4. **Rule Addition** (sequential): Count global chemical abundances across the lattice. Sample three reactants based on global counts weighted by volatilities. If no matching rule exists, generate random products that conserve or decrease mass, and add the new rule if valid.
 
