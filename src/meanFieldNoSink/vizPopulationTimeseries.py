@@ -52,7 +52,7 @@ def main(N, S):
     
     ax.set_xlabel('Timestep', fontsize=14)
     ax.set_ylabel('Molecule Count', fontsize=14)
-    # ax.set_yscale('log')
+    ax.set_yscale('log')
     ax.set_title(f'Chemical Populations Over Time (N={N}, S={S})', fontsize=16)
     ax.grid(True, alpha=0.3)
     

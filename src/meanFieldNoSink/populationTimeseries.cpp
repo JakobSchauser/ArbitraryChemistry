@@ -9,9 +9,9 @@
 
 constexpr int N_CHEMICALS = 100;  // Number of different chemicals (excluding empty=0)
 constexpr int TOTAL_MOLECULES = 100000;  // Total molecules
-constexpr int N_STEPS = 10000000;  // Number of timesteps
+constexpr int N_STEPS = 100000000;  // Number of timesteps
 constexpr int MAX_RULES = 1000;  // Maximum number of rules
-constexpr int SUPPLY_RATE = 1000;  // Molecules supplied per timestep
+constexpr int SUPPLY_RATE = 10;  // Molecules supplied per timestep
 
 constexpr int RECORDING_INTERVAL = N_STEPS / 1000; // Interval for recording state
 
@@ -158,7 +158,8 @@ int main() {
     std::vector<float> volatility(N_CHEMICALS + 1);
     std::uniform_real_distribution<> dis(0.0, 1.0);
     for (int c = 0; c <= N_CHEMICALS; ++c) {
-        volatility[c] = dis(gen);
+        // volatility[c] = dis(gen);
+        volatility[c] = 1.0f;
     }
     
     // Initialize rules
@@ -210,7 +211,7 @@ int main() {
     
     for (int t = 1; t < N_STEPS; ++t) {
         update(counts, rules, n_rules, volatility, gen, t, counts_file, rules_file);
-        if (t % 100000 == 0) {
+        if (t % 1000 == 0) {
             std::cout << "Progress:" << (t * 100) / N_STEPS << "%\r";
         }
     }

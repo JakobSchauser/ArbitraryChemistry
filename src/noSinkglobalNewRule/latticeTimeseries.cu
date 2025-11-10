@@ -8,14 +8,14 @@
 #include <filesystem>
 
 constexpr int L = 25;  // Size of the lattice
-constexpr int N_CHEMICALS = 10;  // Number of different chemicals (excluding empty=0)
+constexpr int N_CHEMICALS = 100;  // Number of different chemicals (excluding empty=0)
 constexpr int MOLECULES_PER_SITE = 100;  // Total molecules per site
-constexpr int N_STEPS = 10000;  // Number of timesteps
+constexpr int N_STEPS = 100000;  // Number of timesteps
 constexpr int MAX_RULES = 1000;  // Maximum number of rules
 constexpr int SUPPLY_RATE = 10;  // Molecules supplied per timestep at top
-constexpr int D = 25;  // Diffusion coefficient: number of molecules to move per site per step
+constexpr int D = 1;  // Diffusion coefficient: number of molecules to move per site per step
 
-constexpr int RECORDING_INTERVAL = 1000; // Interval for recording lattice state
+constexpr int RECORDING_INTERVAL = 100; // Interval for recording lattice state
 
 // Rule structure: A+B+C -> D+E+F (values 0-N_CHEMICALS, 0=empty)
 struct Rule {
@@ -474,7 +474,7 @@ int main() {
 
         // Check if a new rule was added
         if (h_n_rules > prev_n_rules) {
-            std::cout << "New rule added at step " << t << std::endl;
+            std::cout << "Rule " << h_n_rules - 1 << " added at step " << t << std::endl;
         }
         prev_n_rules = h_n_rules;
 
