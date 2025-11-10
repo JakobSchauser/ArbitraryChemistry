@@ -3,12 +3,12 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from pathlib import Path
 
-def main(N, S):
+def main(N, S, subdir):
     # Get script directory
     script_dir = Path(__file__).parent
     
     # Load data from outputs in script directory
-    data_dir = script_dir / "outputs" / "timeseries" / f"N_{N}_S_{S}"
+    data_dir = script_dir / "outputs" / subdir / f"N_{N}_S_{S}"
     counts_file = data_dir / "counts.tsv"
     
     # Read counts file
@@ -57,7 +57,7 @@ def main(N, S):
     ax.grid(True, alpha=0.3)
     
     # Save figure to plots in script directory
-    output_dir = script_dir / "plots" / "timeseries"
+    output_dir = script_dir / "plots" / subdir
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"populations_N_{N}_S_{S}.png"
     plt.tight_layout()
@@ -67,6 +67,9 @@ def main(N, S):
 
 if __name__ == "__main__":
     N = 100000  # Number of molecules
-    S = 1000   # Supply rate
+    S = 10   # Supply rate
+    
+    subdir = "timeseries"
+    # subdir = "timeseriesLogVolatility"
 
-    main(N, S)
+    main(N, S, subdir)

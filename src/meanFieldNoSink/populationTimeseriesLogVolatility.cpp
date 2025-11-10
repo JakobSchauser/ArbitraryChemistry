@@ -154,12 +154,11 @@ int main() {
     std::vector<int> counts(N_CHEMICALS + 1);
     counts[0] = TOTAL_MOLECULES;  // All empty initially
     
-    // Volatilities
+    // Volatilities - lognormal distribution
     std::vector<float> volatility(N_CHEMICALS + 1);
-    std::uniform_real_distribution<> dis(0.0, 1.0);
+    std::lognormal_distribution<> dis(0.0, 1.0);  // mean=0, stddev=1 in log-space
     for (int c = 0; c <= N_CHEMICALS; ++c) {
-        // volatility[c] = dis(gen);
-        volatility[c] = 1.0f;
+        volatility[c] = dis(gen);
     }
     
     // Initialize rules
@@ -171,7 +170,7 @@ int main() {
     int n_rules = 4;
     
     // Output directory
-    std::filesystem::path output_dir = std::filesystem::current_path() / "outputs" / "timeseries" / 
+    std::filesystem::path output_dir = std::filesystem::current_path() / "outputs" / "timeseriesLogVolatility" / 
                                      ("N_" + std::to_string(TOTAL_MOLECULES) + "_S_" + std::to_string(SUPPLY_RATE));
     std::filesystem::create_directories(output_dir);
     
