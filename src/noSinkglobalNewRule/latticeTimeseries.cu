@@ -326,89 +326,50 @@ __global__ void diffuse(int *lattice, curandState *states, int phase) {
     curandState localState = states[id];
     int stride = N_CHEMICALS + 1;
     
-    // Each site swaps with available neighbors in its designated direction
-    // This ensures no race conditions as each phase has non-overlapping swap patterns
+    // Define all possible neighbors (up, down, left, right)
+    int neighbors[4][2];
+    int num_neighbors = 0;
     
-    // Perform D molecule swaps
-    for (int i = 0; i < D; ++i) {
-        // Determine which neighbors this phase can safely swap with
-        int nidx = idx, nidy = idy;
-        bool valid_neighbor = false;
-        
-        // Phase-specific neighbor selection to avoid race conditions
-        switch (phase) {
-            case 0: // Phase a - can swap right or down
-                if (curand(&localState) % 2 == 0 && idx + 1 < L) {
-                    nidx = idx + 1; valid_neighbor = true;
-                } else if (idy + 1 < L) {
-                    nidy = idy + 1; valid_neighbor = true;
-                }
-                break;
-            case 1: // Phase b - can swap left or down  
-                if (curand(&localState) % 2 == 0 && idx > 0) {
-                    nidx = idx - 1; valid_neighbor = true;
-                } else if (idy + 1 < L) {
-                    nidy = idy + 1; valid_neighbor = true;
-                }
-                break;
-            case 2: // Phase c - can swap right or up
-                if (curand(&localState) % 2 == 0 && idx + 1 < L) {
-                    nidx = idx + 1; valid_neighbor = true;
-                } else if (idy > 0) {
-                    nidy = idy - 1; valid_neighbor = true;
-                }
-                break;
-            case 3: // Phase d - can swap left or up
-                if (curand(&localState) % 2 == 0 && idx > 0) {
-                    nidx = idx - 1; valid_neighbor = true;
-                } else if (idy > 0) {
-                    nidy = idy - 1; valid_neighbor = true;
-                }
-                break;
-            case 4: // Phase e - can swap right or down
-                if (curand(&localState) % 2 == 0 && idx + 1 < L) {
-                    nidx = idx + 1; valid_neighbor = true;
-                } else if (idy + 1 < L) {
-                    nidy = idy + 1; valid_neighbor = true;
-                }
-                break;
-            case 5: // Phase f - can swap left or down
-                if (curand(&localState) % 2 == 0 && idx > 0) {
-                    nidx = idx - 1; valid_neighbor = true;
-                } else if (idy + 1 < L) {
-                    nidy = idy + 1; valid_neighbor = true;
-                }
-                break;
-        }
-        
-        if (!valid_neighbor) continue;
-        
+    if (idx > 0) { neighbors[num_neighbors][0] = idx - 1; neighbors[num_neighbors][1] = idy; num_neighbors++; }      // left
+    if (idx + 1 < L) { neighbors[num_neighbors][0] = idx + 1; neighbors[num_neighbors][1] = idy; num_neighbors++; }  // right
+    if (idy > 0) { neighbors[num_neighbors][0] = idx; neighbors[num_neighbors][1] = idy - 1; num_neighbors++; }      // up
+    if (idy + 1 < L) { neighbors[num_neighbors][0] = idx; neighbors[num_neighbors][1] = idy + 1; num_neighbors++; }  // down
+    
+    // Perform D swaps with EACH neighbor
+    for (int n = 0; n < num_neighbors; ++n) {
+        int nidx = neighbors[n][0];
+        int nidy = neighbors[n][1];
         int nid = nidy * L + nidx;
         
-        // Both sites always have exactly MOLECULES_PER_SITE total molecules
-        // Weighted random sampling from current site
-        int rand_current = curand(&localState) % MOLECULES_PER_SITE;
-        int c_a = 0;
-        int cumsum = lattice[id * stride + 0];
-        while (cumsum <= rand_current && c_a < stride - 1) {
-            c_a++;
-            cumsum += lattice[id * stride + c_a];
+        // Do D swaps with this specific neighbor
+        for (int i = 0; i < D; ++i) {
+        // Do D swaps with this specific neighbor
+        for (int i = 0; i < D; ++i) {
+            // Both sites always have exactly MOLECULES_PER_SITE total molecules
+            // Weighted random sampling from current site
+            int rand_current = curand(&localState) % MOLECULES_PER_SITE;
+            int c_a = 0;
+            int cumsum = lattice[id * stride + 0];
+            while (cumsum <= rand_current && c_a < stride - 1) {
+                c_a++;
+                cumsum += lattice[id * stride + c_a];
+            }
+            
+            // Weighted random sampling from neighbor site
+            int rand_neighbor = curand(&localState) % MOLECULES_PER_SITE;
+            int c_b = 0;
+            cumsum = lattice[nid * stride + 0];
+            while (cumsum <= rand_neighbor && c_b < stride - 1) {
+                c_b++;
+                cumsum += lattice[nid * stride + c_b];
+            }
+            
+            // Perform swap - guaranteed to succeed since we sampled from existing molecules
+            lattice[id * stride + c_a] -= 1;
+            lattice[nid * stride + c_a] += 1;
+            lattice[nid * stride + c_b] -= 1;
+            lattice[id * stride + c_b] += 1;
         }
-        
-        // Weighted random sampling from neighbor site
-        int rand_neighbor = curand(&localState) % MOLECULES_PER_SITE;
-        int c_b = 0;
-        cumsum = lattice[nid * stride + 0];
-        while (cumsum <= rand_neighbor && c_b < stride - 1) {
-            c_b++;
-            cumsum += lattice[nid * stride + c_b];
-        }
-        
-        // Perform swap - guaranteed to succeed since we sampled from existing molecules
-        lattice[id * stride + c_a] -= 1;
-        lattice[nid * stride + c_a] += 1;
-        lattice[nid * stride + c_b] -= 1;
-        lattice[id * stride + c_b] += 1;
     }
     
     states[id] = localState;
