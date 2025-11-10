@@ -279,28 +279,17 @@ __global__ void init_curand(curandState *states, unsigned long seed) {
     }
 }
 
-void save_lattice(const std::vector<int> &lattice, const std::string &filename) {
-    std::ofstream file(filename);
+void save_lattice(const std::vector<int> &lattice, const std::string &filename, int timestep) {
+    std::ofstream file(filename, std::ios::binary | std::ios::app);
     
-    // Write header with metadata
-    file << "# Lattice size: " << L << "x" << L << std::endl;
-    file << "# Molecules per site: " << MOLECULES_PER_SITE << std::endl;
-    file << "# Chemical range: 0-" << N_CHEMICALS << " (0=empty)" << std::endl;
-    file << "# Format: x,y,chemical,count" << std::endl;
-    file << "x,y,chemical,count" << std::endl;
+    // Write header for this timestep
+    int header[4] = {timestep, L, L, N_CHEMICALS + 1};
+    file.write(reinterpret_cast<char*>(&header), sizeof(header));
     
-    // Write data in CSV format, only include non-zero counts for efficiency
-    for (int i = 0; i < L; ++i) {
-        for (int j = 0; j < L; ++j) {
-            int site_idx = (i * L + j) * (N_CHEMICALS + 1);
-            for (int c = 0; c <= N_CHEMICALS; ++c) {
-                int count = lattice[site_idx + c];
-                if (count > 0) {  // Only save non-zero counts
-                    file << j << "," << i << "," << c << "," << count << std::endl;
-                }
-            }
-        }
-    }
+    // Write entire lattice data in binary format
+    file.write(reinterpret_cast<const char*>(lattice.data()), 
+               lattice.size() * sizeof(int));
+    
     file.close();
 }
 
@@ -429,6 +418,9 @@ int main() {
     // Dynamically create outputs/latticeTimeseries/L_<L>_D_<D> directory
     std::filesystem::path output_dir = std::filesystem::current_path() / "outputs" / "latticeTimeseries" / ("L_" + std::to_string(L) + "_D_" + std::to_string(D));
     std::filesystem::create_directories(output_dir);
+    
+    // Single binary file for all timesteps
+    std::string lattice_filename = (output_dir / "lattice_data.bin").string();
 
     int prev_n_rules = 0;  // Track previous number of rules
 
@@ -493,7 +485,7 @@ int main() {
             cudaMemcpy(h_lattice.data(), d_lattice, 
                       L * L * (N_CHEMICALS + 1) * sizeof(int), 
                       cudaMemcpyDeviceToHost);
-            save_lattice(h_lattice, (output_dir / ("lattice_" + std::to_string(t) + ".txt")).string());
+            save_lattice(h_lattice, lattice_filename, t);
             
             cudaMemcpy(h_rules.data(), d_rules, MAX_RULES * sizeof(Rule), 
                       cudaMemcpyDeviceToHost);

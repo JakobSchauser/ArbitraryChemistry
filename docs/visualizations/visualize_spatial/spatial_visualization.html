@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spatial Chemical Distribution Visualization</title>
+    <title>Spatial Chemical Distribution Visualization (Binary)</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
@@ -20,25 +20,6 @@
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             overflow: hidden;
-        }
-
-        .header {
-            background: #667eea;
-            color: white;
-            padding: 10px;
-            text-align: center;
-        }
-
-        .header h1 {
-            margin: 0;
-            font-size: 1.8em;
-            font-weight: 300;
-        }
-
-        .header p {
-            margin: 3px 0 0 0;
-            opacity: 0.9;
-            font-size: 1em;
         }
 
         .controls {
@@ -148,6 +129,37 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+        }
+
+        .time-controls-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .play-pause-btn {
+            padding: 8px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color 0.3s;
+            min-width: 40px;
+        }
+
+        .play-pause-btn:hover {
+            background: #5a67d8;
+        }
+
+        .play-pause-btn.playing {
+            background: #dc3545;
+        }
+
+        .play-pause-btn.playing:hover {
+            background: #c82333;
         }
 
         .time-slider {
@@ -336,10 +348,6 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>Spatial Chemical Distribution</h1>
-            <p>Interactive visualization of chemical concentrations over space and time</p>
-        </div>
 
         <div class="controls">
             <div class="control-group">
@@ -371,7 +379,10 @@
             </div>
 
             <div class="time-control">
-                <label>Time Step:</label>
+                <div class="time-controls-row">
+                    <button class="play-pause-btn" id="playPauseBtn" onclick="togglePlayPause()">▶️</button>
+                    <label>Time Step:</label>
+                </div>
                 <input type="range" class="time-slider" id="timeSlider" 
                        min="0" max="0" value="0" oninput="updateTimeStep()">
                 <div class="time-info" id="timeInfo">Step 0</div>
@@ -419,7 +430,11 @@
         let availableChemicals = new Set();
         let currentTimeStep = 0;
         let latticeSize = 10;  // Will be updated when data is loaded
+        let latticeSize_global = 0;  // Global lattice size for binary format
         let selectedFiles = [];  // Store selected files from folder picker
+        let isPlaying = false;
+        let animationInterval = null;
+        let animationSpeed = 500; // milliseconds between frames
 
         const canvas = document.getElementById('latticeCanvas');
         const ctx = canvas.getContext('2d');
@@ -505,20 +520,23 @@
                 timeSteps = [];
                 availableChemicals = new Set();
                 
-                // Filter for lattice files
+                // Filter for lattice binary file
                 const latticeFiles = selectedFiles.filter(file => 
-                    file.name.startsWith('lattice_') && file.name.endsWith('.txt')
+                    file.name === 'lattice_data.bin'
                 );
                 
                 if (latticeFiles.length === 0) {
-                    setStatus('error', 'No lattice files found in the selected folder');
+                    setStatus('error', 'No lattice_data.bin file found in the selected folder');
+                    return;
+                }
+                
+                if (latticeFiles.length > 1) {
+                    setStatus('error', 'Multiple lattice_data.bin files found. Please select a folder with only one.');
                     return;
                 }
 
-                // Load each file
-                for (const file of latticeFiles) {
-                    await loadLatticeFile(file);
-                }
+                // Load the single binary file
+                await loadLatticeFile(latticeFiles[0]);
 
                 // Sort time steps
                 timeSteps.sort((a, b) => a - b);
@@ -544,64 +562,68 @@
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
-                        const text = e.target.result;
-                        const data = {};
+                        const buffer = e.target.result;
+                        const view = new DataView(buffer);
                         
-                        const lines = text.split('\n');
-                        let dataStarted = false;
+                        let offset = 0;
                         
-                        // Extract time step from filename
-                        const timeStepMatch = file.name.match(/lattice_(\d+)\.txt/);
-                        if (!timeStepMatch) {
-                            reject(new Error(`Invalid filename format: ${file.name}`));
-                            return;
-                        }
-                        const timeStep = parseInt(timeStepMatch[1]);
-                        
-                        for (const line of lines) {
-                            const trimmed = line.trim();
-                            if (!trimmed || trimmed.startsWith('#')) {
-                                // Extract lattice size from header
-                                if (trimmed.startsWith('# Lattice size:')) {
-                                    const sizeMatch = trimmed.match(/(\d+)x(\d+)/);
-                                    if (sizeMatch) {
-                                        latticeSize = parseInt(sizeMatch[1]);
-                                    }
-                                }
-                                continue;
+                        // Read all timesteps from the binary file
+                        while (offset < buffer.byteLength) {
+                            // Read header (timestep, L, L, chemicals_per_site)
+                            const timestep = view.getInt32(offset, true);
+                            offset += 4;
+                            const latticeSize = view.getInt32(offset, true);
+                            offset += 4;
+                            const latticeSizeY = view.getInt32(offset, true);
+                            offset += 4;
+                            const chemicalsPerSite = view.getInt32(offset, true);
+                            offset += 4;
+                            
+                            if (latticeSize !== latticeSizeY) {
+                                reject(new Error(`Non-square lattice not supported: ${latticeSize}x${latticeSizeY}`));
+                                return;
                             }
                             
-                            if (trimmed === 'x,y,chemical,count') {
-                                dataStarted = true;
-                                continue;
+                            // Update global lattice size if not set
+                            if (latticeSize_global === 0) {
+                                latticeSize_global = latticeSize;
+                                latticeSize = latticeSize;  // Update the global latticeSize variable
+                            } else if (latticeSize_global !== latticeSize) {
+                                reject(new Error(`Lattice size mismatch: expected ${latticeSize_global}, got ${latticeSize}`));
+                                return;
                             }
                             
-                            if (dataStarted) {
-                                const parts = trimmed.split(',');
-                                if (parts.length === 4) {
-                                    const x = parseInt(parts[0]);
-                                    const y = parseInt(parts[1]);
-                                    const chemical = parseInt(parts[2]);
-                                    const count = parseInt(parts[3]);
+                            const data = {};
+                            
+                            // Read lattice data
+                            for (let y = 0; y < latticeSize; y++) {
+                                for (let x = 0; x < latticeSize; x++) {
+                                    const siteOffset = (y * latticeSize + x) * chemicalsPerSite;
                                     
-                                    if (!isNaN(x) && !isNaN(y) && !isNaN(chemical) && !isNaN(count)) {
-                                        const key = `${x},${y},${chemical}`;
-                                        data[key] = count;
-                                        availableChemicals.add(chemical);
+                                    for (let c = 0; c < chemicalsPerSite; c++) {
+                                        const count = view.getInt32(offset + (siteOffset + c) * 4, true);
+                                        if (count > 0) {
+                                            const key = `${x},${y},${c}`;
+                                            data[key] = count;
+                                            availableChemicals.add(c);
+                                        }
                                     }
                                 }
                             }
+                            
+                            latticeData[timestep] = data;
+                            timeSteps.push(timestep);
+                            
+                            offset += latticeSize * latticeSize * chemicalsPerSite * 4;
                         }
                         
-                        latticeData[timeStep] = data;
-                        timeSteps.push(timeStep);
                         resolve();
                     } catch (error) {
                         reject(error);
                     }
                 };
                 reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-                reader.readAsText(file);
+                reader.readAsArrayBuffer(file);
             });
         }
 
@@ -634,15 +656,31 @@
         }
 
         function setupTimeSlider() {
+            // Stop any existing animation
+            stopAnimation();
+            
             const slider = document.getElementById('timeSlider');
             slider.min = 0;
             slider.max = timeSteps.length - 1;
             slider.value = 0;
             currentTimeStep = timeSteps[0];
             updateTimeInfo();
+            
+            // Reset play button
+            const btn = document.getElementById('playPauseBtn');
+            btn.textContent = '▶️';
+            btn.classList.remove('playing');
         }
 
         function updateTimeStep() {
+            // Stop animation if user manually changes slider
+            if (isPlaying) {
+                stopAnimation();
+                const btn = document.getElementById('playPauseBtn');
+                btn.textContent = '▶️';
+                btn.classList.remove('playing');
+            }
+            
             const slider = document.getElementById('timeSlider');
             const index = parseInt(slider.value);
             currentTimeStep = timeSteps[index];
@@ -652,6 +690,48 @@
 
         function updateTimeInfo() {
             document.getElementById('timeInfo').textContent = `Step ${currentTimeStep}`;
+        }
+
+        function togglePlayPause() {
+            const btn = document.getElementById('playPauseBtn');
+            
+            if (isPlaying) {
+                // Pause
+                stopAnimation();
+                btn.textContent = '▶️';
+                btn.classList.remove('playing');
+            } else {
+                // Play
+                startAnimation();
+                btn.textContent = '⏸️';
+                btn.classList.add('playing');
+            }
+        }
+
+        function startAnimation() {
+            if (timeSteps.length <= 1) return;
+            
+            isPlaying = true;
+            animationInterval = setInterval(() => {
+                const slider = document.getElementById('timeSlider');
+                let currentIndex = parseInt(slider.value);
+                
+                currentIndex++;
+                if (currentIndex >= timeSteps.length) {
+                    currentIndex = 0; // Loop back to beginning
+                }
+                
+                slider.value = currentIndex;
+                updateTimeStep();
+            }, animationSpeed);
+        }
+
+        function stopAnimation() {
+            isPlaying = false;
+            if (animationInterval) {
+                clearInterval(animationInterval);
+                animationInterval = null;
+            }
         }
 
         function updateVisualization() {
