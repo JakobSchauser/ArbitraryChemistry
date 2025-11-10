@@ -67,9 +67,17 @@
         }
         
         .link {
-            stroke: #666;
             stroke-width: 2px;
-            marker-end: url(#arrowhead);
+        }
+        
+        .link.reactant {
+            stroke: #e74c3c;
+            marker-end: url(#arrowhead-red);
+        }
+        
+        .link.product {
+            stroke: #27ae60;
+            marker-end: url(#arrowhead-green);
         }
         
         .reaction-node {
@@ -78,6 +86,11 @@
         
         .chemical-node {
             fill: #1f77b4;
+        }
+        
+        .chemical-node.empty {
+            fill: #1f77b4;
+            opacity: 0.3;
         }
         
         .tooltip {
@@ -115,6 +128,85 @@
             margin-right: 8px;
             border: 2px solid #333;
         }
+        
+        .detail-panel {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+        }
+        
+        .detail-panel h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .detail-panel .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .detail-panel .close-btn:hover {
+            color: #333;
+        }
+        
+        .reaction-section {
+            margin-bottom: 20px;
+        }
+        
+        .reaction-section h4 {
+            margin: 0 0 10px 0;
+            color: #555;
+        }
+        
+        .reaction-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .reaction-list li {
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #dee2e6;
+            font-family: monospace;
+        }
+        
+        .reaction-list li.consumed {
+            border-left-color: #e74c3c;
+            background: #fdf2f2;
+        }
+        
+        .reaction-list li.produced {
+            border-left-color: #27ae60;
+            background: #f2fdf5;
+        }
+        
+        .reaction-meta {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -148,6 +240,11 @@
         </div>
         
         <div class="tooltip" id="tooltip"></div>
+        
+        <div class="detail-panel" id="detailPanel">
+            <button class="close-btn" onclick="closeDetailPanel()">&times;</button>
+            <div id="detailContent"></div>
+        </div>
     </div>
 
     <script>
@@ -161,9 +258,12 @@
             .attr("width", width + margin.left + margin.right)
             .attr("height", height + margin.top + margin.bottom);
 
-        // Define arrowhead marker
-        svg.append("defs").append("marker")
-            .attr("id", "arrowhead")
+        // Define arrowhead markers
+        const defs = svg.append("defs");
+        
+        // Red arrowhead for reactants
+        defs.append("marker")
+            .attr("id", "arrowhead-red")
             .attr("viewBox", "0 -5 10 10")
             .attr("refX", 15)
             .attr("refY", 0)
@@ -172,12 +272,99 @@
             .attr("orient", "auto")
             .append("path")
             .attr("d", "M0,-5L10,0L0,5")
-            .attr("fill", "#666");
+            .attr("fill", "#e74c3c");
+            
+        // Green arrowhead for products
+        defs.append("marker")
+            .attr("id", "arrowhead-green")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 15)
+            .attr("refY", 0)
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#27ae60");
 
         const g = svg.append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
 
         const tooltip = d3.select("#tooltip");
+        const detailPanel = d3.select("#detailPanel");
+        let allRules = []; // Store all rules for detail panel
+
+        // Close detail panel function
+        function closeDetailPanel() {
+            detailPanel.style("display", "none");
+        }
+
+        // Show chemical details function
+        function showChemicalDetails(chemical) {
+            const consumed = [];
+            const produced = [];
+            
+            allRules.forEach((rule, index) => {
+                const reactantsStr = rule.reactants.join(' + ');
+                const productsStr = rule.products.join(' + ');
+                const reactionStr = `${reactantsStr} → ${productsStr}`;
+                
+                if (rule.reactants.includes(chemical)) {
+                    consumed.push({
+                        reaction: reactionStr,
+                        step: rule.step,
+                        index: index
+                    });
+                }
+                
+                if (rule.products.includes(chemical)) {
+                    produced.push({
+                        reaction: reactionStr,
+                        step: rule.step,
+                        index: index
+                    });
+                }
+            });
+            
+            let content = `<h3>Chemical ${chemical}${chemical === 0 ? ' (Empty)' : ''}</h3>`;
+            
+            content += `<div class="reaction-section">
+                <h4>🔴 Consumed in reactions (${consumed.length}):</h4>
+                <ul class="reaction-list">`;
+            
+            if (consumed.length === 0) {
+                content += `<li>No reactions consume this chemical</li>`;
+            } else {
+                consumed.forEach(item => {
+                    content += `<li class="consumed">
+                        ${item.reaction}
+                        <div class="reaction-meta">Added at step: ${item.step}</div>
+                    </li>`;
+                });
+            }
+            
+            content += `</ul></div>`;
+            
+            content += `<div class="reaction-section">
+                <h4>🟢 Produced in reactions (${produced.length}):</h4>
+                <ul class="reaction-list">`;
+            
+            if (produced.length === 0) {
+                content += `<li>No reactions produce this chemical</li>`;
+            } else {
+                produced.forEach(item => {
+                    content += `<li class="produced">
+                        ${item.reaction}
+                        <div class="reaction-meta">Added at step: ${item.step}</div>
+                    </li>`;
+                });
+            }
+            
+            content += `</ul></div>`;
+            
+            d3.select("#detailContent").html(content);
+            detailPanel.style("display", "block");
+        }
 
         // File input handler
         document.getElementById('fileInput').addEventListener('change', function(event) {
@@ -204,6 +391,9 @@
                     products: [parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6])]
                 };
             });
+
+            // Store rules globally for detail panel
+            allRules = rules;
 
             // Extract unique chemicals
             const chemicals = new Set();
@@ -276,7 +466,7 @@
                 .selectAll("line")
                 .data(links)
                 .enter().append("line")
-                .attr("class", "link");
+                .attr("class", d => `link ${d.type}`);
 
             // Create nodes
             const node = g.append("g")
@@ -297,7 +487,7 @@
                 if (d.type === 'chemical') {
                     element.append("circle")
                         .attr("r", 15)
-                        .attr("class", "chemical-node");
+                        .attr("class", d.chemical === 0 ? "chemical-node empty" : "chemical-node");
                 } else {
                     element.append("rect")
                         .attr("width", 24)
@@ -311,13 +501,18 @@
             // Add labels
             node.append("text")
                 .text(d => d.label)
-                .style("fill", "white");
+                .style("fill", d => {
+                    if (d.type === 'chemical' && d.chemical === 0) {
+                        return "rgba(255, 255, 255, 0.7)"; // Semi-transparent white for empty
+                    }
+                    return "white";
+                });
 
-            // Add tooltips
+            // Add tooltips and click handlers
             node.on("mouseover", function(event, d) {
                 let tooltipText;
                 if (d.type === 'chemical') {
-                    tooltipText = `Chemical ${d.chemical}${d.chemical === 0 ? ' (Empty)' : ''}`;
+                    tooltipText = `Chemical ${d.chemical}${d.chemical === 0 ? ' (Empty)' : ''}<br>Click for details`;
                 } else {
                     const reactantsStr = d.rule.reactants.join(' + ');
                     const productsStr = d.rule.products.join(' + ');
@@ -331,6 +526,13 @@
             })
             .on("mouseout", function() {
                 tooltip.style("opacity", 0);
+            })
+            .on("click", function(event, d) {
+                if (d.type === 'chemical') {
+                    showChemicalDetails(d.chemical);
+                    // Prevent drag from starting on click
+                    event.stopPropagation();
+                }
             });
 
             // Update positions on tick
