@@ -68,8 +68,8 @@ def main(N, S, subdir):
 if __name__ == "__main__":
     N = 100000  # Number of molecules
     S = 10   # Supply rate
-    
-    subdir = "timeseries"
-    # subdir = "timeseriesLogVolatility"
+
+    # subdir = "timeseries"
+    subdir = "timeseriesLogVolatility"
 
     main(N, S, subdir)

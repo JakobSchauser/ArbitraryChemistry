@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from pathlib import Path
+import csv
 
 def main(L, D):
     # Get script directory
@@ -19,20 +20,20 @@ def main(L, D):
         # Extract timestep from filename (e.g., lattice_1000.txt -> 1000)
         t = int(file_path.stem.split('_')[1])
         
-        # Read and parse lattice file
+        # Read and parse lattice file (new CSV format)
         with open(file_path, 'r') as f:
-            lines = f.readlines()
+            # Skip comment lines starting with '#'
+            lines = [line for line in f if not line.startswith('#')]
         
         # Initialize sum_counts for chemicals 0 to 100
         sum_counts = np.zeros(101, dtype=int)  # 0 to 100
         
-        for line in lines:
-            sites = line.strip().split('\t')
-            for site_str in sites:
-                if site_str.strip():  # Skip empty
-                    counts = [int(x) for x in site_str.split()]
-                    for c in range(len(counts)):
-                        sum_counts[c] += counts[c]
+        # Parse CSV data (skip header line)
+        reader = csv.DictReader(lines)
+        for row in reader:
+            chemical = int(row['chemical'])
+            count = int(row['count'])
+            sum_counts[chemical] += count
         
         data_list.append((t, sum_counts))
     
@@ -82,6 +83,6 @@ def main(L, D):
 
 if __name__ == "__main__":
     L = 25  # Lattice size
-    D = 5   # Diffusion coefficient
+    D = 1   # Diffusion coefficient
 
     main(L, D)
